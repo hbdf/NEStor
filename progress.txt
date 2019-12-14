@@ -1,0 +1,6 @@
+11/12/19
+- Understood how opcodes and address mode works (read chap cpu)
+- Started Implementing CPU (Missing how will organize the functions)
+Tomorrow:
+[ ] Decide how will do the call for opcodes
+[ ] Implement at least ADC & AND

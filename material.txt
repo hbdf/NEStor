@@ -1,0 +1,2 @@
+General: http://nesdev.com/NESDoc.pdf
+6502: https://www.masswerk.at/6502/6502_instruction_set.html
