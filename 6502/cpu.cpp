@@ -286,11 +286,59 @@ void CPU::LDY(uint8_t m) {
     set_bit(SR, bs.Z, !Y);
 }
 
+/* Only works for memory, not with acumulator */
+void CPU::LSR(uint16_t memory_location) {
+    uint8_t val = bus->read(memory_location);
+    set_bit(SR, bs.C, !!(val & 0x1));
+    val >>= 1;
+    set_bit(SR, bs.Z, !val);
+    set_bit(SR, bs.N, false);
+    bus->write(memory_location, val);
+}
+
+void CPU::NOP() {}
+
+void CPU::ORA(uint8_t m) {
+    AC |= m;
+    set_bit(SR, bs.Z, !AC);
+    set_bit(SR, bs.N, !!(AC & 0x80));
+}
+
+void CPU::PHA() {
+    bus->write(SP--, AC);
+}
+
+void CPU:PHP() {
+    bus->write(SP--, SR);
+}
+
+void CPU::PLA() {
+    uint8_t val = bus->read(SP++);
+    set_bit(SR, bs.N, !!(val & 0x80));
+    set_bit(SR, bs.Z, !val);
+    AC = val;
+}
+
+void CPU::PLP() {
+    uint8_t val = bus->read(SP++);
+    set_bit(SR, bs.N, !!(val & 0x80));
+    set_bit(SR, bs.Z, !val);
+    SR = val;
+}
+
 void CPU::exec(const uint8_t op_code) {
     switch(op_code) {
         case 0x00 :
             BRK();
             this->cycles += 7;
+            break;
+        case 0x01 :
+            ORA(read(addr_indr_x));
+            this->cycles += 6;
+            break;
+        case 0x05 :
+            ORA(read(addr_zpg));
+            this->cycles += 3;
             break;
         case 0x06 :
             uint16_t mem_location = addr_zpg();
@@ -298,10 +346,22 @@ void CPU::exec(const uint8_t op_code) {
             bus->write(mem_location, ASL(val));
             this->cycles += 5;
             break;
+        case 0x08 :
+            PHP();
+            this->cycles += 3;
+            break;
+        case 0x09 :
+            ORA(read(addr_imd));
+            this->cycles += 2;
+            break;
         case 0x0A :
             uint8_t val = ASL(AC);
             AC = val;
             this->cycles += 2;
+            break;
+        case 0x0D :
+            ORA(read(addr_abs));
+            this->cycles += 4;
             break;
         case 0x0E :
             uint16_t mem_location = addr_abs();
@@ -313,6 +373,14 @@ void CPU::exec(const uint8_t op_code) {
             BPL();
             this->cycles += 2;
             break;
+        case 0x11 :
+            ORA(read(addr_indr_y));
+            this->cycles += 5;
+            break;
+        case 0x15 :
+            ORA(read(addr_zpg_x));
+            this->cycles += 4;
+            break;
         case 0x16 :
             uint16_t mem_location = addr_zpg_x();
             uint8_t val = bus->read(mem_location);
@@ -322,6 +390,14 @@ void CPU::exec(const uint8_t op_code) {
         case 0x18 :
             CLC();
             this->cycles += 2;
+            break;
+        case 0x19 :
+            ORA(read(addr_abs_y));
+            this->cycles += 4;
+            break;
+        case 0x1D :
+            ORA(read(addr_abs_x));
+            this->cycles += 4;
             break;
         case 0x1E :
             uint16_t mem_location = addr_abs_x();
@@ -344,6 +420,10 @@ void CPU::exec(const uint8_t op_code) {
         case 0x25 :
             AND(read(addr_zpg));
             this->cycles += 3;
+            break;
+        case 0x28 :
+            PLP();
+            this->cycles += 4;
             break;
         case 0x29 :
             AND(read(addr_imd));
@@ -385,8 +465,23 @@ void CPU::exec(const uint8_t op_code) {
             EOR(read(addr_zpg));
             this->cycles += 3;
             break;
+        case 0x46 :
+            LSR(addr_zpg());
+            this->cycles += 5;
+            break;
+        case 0x48 :
+            PHA();
+            this->cycles += 3;
+            break;
         case 0x49 :
             EOR(read(addr_imd));
+            this->cycles += 2;
+            break;
+        case 0x4A :
+            set_bit(SR, bs.C, !!(AC & 0x1));
+            AC >>= 1;
+            set_bit(SR, bs.Z, !AC);
+            set_bit(SR, bs.N, false);
             this->cycles += 2;
             break;
         case 0x4C :
@@ -396,6 +491,10 @@ void CPU::exec(const uint8_t op_code) {
         case 0x4D :
             EOR(read(addr_abs));
             this->cycles += 4;
+            break;
+        case 0x4E :
+            LSR(addr_abs());
+            this->cycles += 6;
             break;
         case 0x50 :
             BVC();
@@ -409,6 +508,10 @@ void CPU::exec(const uint8_t op_code) {
             EOR(read(addr_zpg_x));
             this->cycles += 4;
             break;
+        case 0x56 :
+            LSR(addr_zpg_x());
+            this->cycles += 6;
+            break;
         case 0x58 :
             CLI();
             this->cycles += 2;
@@ -421,6 +524,10 @@ void CPU::exec(const uint8_t op_code) {
             EOR(read(addr_abs_x));
             this->cycles += 4;
             break;
+        case 0x5E :
+            LSR(addr_abs_x());
+            this->cycles += 7;
+            break;
         case 0x61 :
             ADC(read(addr_indr_x));
             this->cycles += 6;
@@ -428,6 +535,10 @@ void CPU::exec(const uint8_t op_code) {
         case 0x65 :
             ADC(read(addr_zpg));
             this->cycles += 3;
+            break;
+        case 0x68 :
+            PLA();
+            this->cycles += 4;
             break;
         case 0x69 :
             ADC(read(addr_imd));
@@ -639,6 +750,10 @@ void CPU::exec(const uint8_t op_code) {
             break;
         case 0xE8 :
             INX();
+            this->cycles += 2;
+            break;
+        case 0xEA :
+            NOP();
             this->cycles += 2;
             break;
         case 0xEC :
