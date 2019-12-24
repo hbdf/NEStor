@@ -325,6 +325,46 @@ void CPU::PLP() {
     set_bit(SR, bs.Z, !val);
     SR = val;
 }
+// TODO Add opcodes starting here
+void CPU::ROL(uint16_t memory_location) {
+    uint8_t val = bus->read(memory_location);
+    bool carry = get_bit(SR, bs.C);
+    set_bit(SR, bs.C, !!(val & 0x80));
+    val <<= 1;
+    val |= carry;
+    set_bit(SR, bs.Z, !val);
+    set_bit(SR, bs.N, !!(val & 0x80));
+    bus->write(memory_location, val);
+}
+
+void CPU::ROR(uint16_t memory_location) {
+    uint8_t val = bus->read(memory_location);
+    bool carry = get_bit(SR, bs.C);
+    set_bit(SR, bs.C, !!(val & 0x1));
+    val >>= 1;
+    if (carry)
+        val |= 0x80;
+    set_bit(SR, bs.Z, !val);
+    set_bit(SR, bs.N, carry);
+    bus->write(memory_location, val);
+}
+
+void CPU::RTI() {
+    SP++; /* SP is on the place to write, not to read */
+    SR = bus->read(SP++);
+    uint8_t low_byte = bus->read(SP++);
+    uint8_t high_byte = bus->read(SP++);
+    PC = join_bytes(low_byte, high_byte);
+}
+
+void CPU::RTS() {
+    SP++;
+    uint8_t low_byte = bus->read(SP++);
+    uint8_t high_byte = bus->read(SP++);
+    PC = join_bytes(low_byte, high_byte);
+    PC++; // TODO Is this right?
+}
+
 
 void CPU::exec(const uint8_t op_code) {
     switch(op_code) {
