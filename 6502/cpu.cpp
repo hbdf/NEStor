@@ -1,9 +1,9 @@
 #include "cpu.h"
 
-void CPU::CPU() {
+CPU::CPU(void) {
 }
 
-void CPU::~CPU() {
+CPU::~CPU(void) {
 }
 
 // Helper Functions
@@ -101,6 +101,13 @@ void CPU::set_overflow_flag_adc(uint8_t a, uint8_t b, uint8_t c = 0) { // TODO C
     uint8_t sum = a + b;
     bool flag = ((a & 0x80) == (b & 0x80)) && ((b & 0x80) != (sum 0x80));
     flag |= (sum == 0x7F) && c;
+    set_bit(SR, bs.O, flag);
+}
+
+void CPU::set_overflow_flag_sbc(uint8_t a, uint8_t b, uint8_t c = 0) { // TODO Check if this is right
+    uint8_t sub = a - b;
+    bool flag = ((a & 0x80) != (b & 0x80)) && ((a & 0x80) != (sub 0x80));
+    flag |= (sub == 0xFF) && c;
     set_bit(SR, bs.O, flag);
 }
 
@@ -325,20 +332,23 @@ void CPU::PLP() {
     set_bit(SR, bs.Z, !val);
     SR = val;
 }
-// TODO Add opcodes starting here
-void CPU::ROL(uint16_t memory_location) {
-    uint8_t val = bus->read(memory_location);
+
+uint8_t CPU::ROL(uint8_t val) {
     bool carry = get_bit(SR, bs.C);
     set_bit(SR, bs.C, !!(val & 0x80));
     val <<= 1;
     val |= carry;
     set_bit(SR, bs.Z, !val);
     set_bit(SR, bs.N, !!(val & 0x80));
-    bus->write(memory_location, val);
+    return val;
 }
 
-void CPU::ROR(uint16_t memory_location) {
+void CPU::ROL(uint16_t memory_location) {
     uint8_t val = bus->read(memory_location);
+    bus->write(memory_location, ROL(val));
+}
+
+void CPU::ROR(uint8_t val) {
     bool carry = get_bit(SR, bs.C);
     set_bit(SR, bs.C, !!(val & 0x1));
     val >>= 1;
@@ -346,7 +356,11 @@ void CPU::ROR(uint16_t memory_location) {
         val |= 0x80;
     set_bit(SR, bs.Z, !val);
     set_bit(SR, bs.N, carry);
-    bus->write(memory_location, val);
+}
+
+void CPU::ROR(uint16_t memory_location) {
+    uint8_t val = bus->read(memory_location);
+    bus->write(memory_location, ROL(val));
 }
 
 void CPU::RTI() {
@@ -364,7 +378,77 @@ void CPU::RTS() {
     PC = join_bytes(low_byte, high_byte);
     PC++; // TODO Is this right?
 }
+//TODO Add opcodes from here
 
+void CPU::SBC(uint8_t m) {
+    bool carry = get_bit(SR, bs.C);
+    uint16_t right_ans = (uint16_t) AC - (uint16_t)m - (uint16_t)carry;
+    set_overflow_flag_sbc(AC, m, carry);
+    AC -= m - carry;
+    set_bit(SR, bs.C, right_ans != AC);
+    set_bit(SR, bs.N, !!(AC & 0x80));
+    set_bit(SR, bs.Z, !AC);
+}
+
+void CPU::SEC() {
+    set_bit(SR, bs.C, true);
+}
+
+void CPU::SED() {
+    set_bit(SR, bs.D, true);
+}
+
+void CPU::SEI() {
+    set_bit(SR, bs.I, true);
+}
+
+void CPU::STA(uint16_t memory_location) {
+    bus->write(memory_location, AC);
+}
+
+void CPU::STX(uint16_t memory_location) {
+    bus->write(memory_location, X);
+}
+
+void CPU::STY(uint16_t memory_location) {
+    bus->write(memory_location, Y);
+}
+
+void CPU::TAX() {
+    X = AC;
+    set_bit(SR, bs.Z, !X);
+    set_bit(SR, bs.N, !!(X & 0x80));
+}
+
+void CPU::TAY() {
+    Y = AC;
+    set_bit(SR, bs.Z, !Y);
+    set_bit(SR, bs.N, !!(Y & 0x80));
+}
+
+void CPU::TSX() {
+    X = SP;
+    set_bit(SR, bs.Z, !X);
+    set_bit(SR, bs.N, !!(X & 0x80));
+}
+
+void CPU::TXA() {
+    AC = X;
+    set_bit(SR, bs.Z, !AC);
+    set_bit(SR, bs.N, !!(AC & 0x80));
+}
+
+void CPU::TXS() {
+    SP = X;
+    set_bit(SR, bs.Z, !SP);
+    set_bit(SR, bs.N, !!(SP & 0x80));
+}
+
+void CPU::TYA() {
+    AC = Y;
+    set_bit(SR, bs.Z, !AC);
+    set_bit(SR, bs.N, !!(AC & 0x80));
+}
 
 void CPU::exec(const uint8_t op_code) {
     switch(op_code) {
@@ -461,12 +545,20 @@ void CPU::exec(const uint8_t op_code) {
             AND(read(addr_zpg));
             this->cycles += 3;
             break;
+        case 0x26 :
+            ROL(addr_zpg());
+            this->cycles += 5;
+            break;
         case 0x28 :
             PLP();
             this->cycles += 4;
             break;
         case 0x29 :
             AND(read(addr_imd));
+            this->cycles += 2;
+            break;
+        case 0x2A :
+            AC = ROL(AC);
             this->cycles += 2;
             break;
         case 0x2C :
@@ -476,6 +568,10 @@ void CPU::exec(const uint8_t op_code) {
         case 0x2D :
             AND(read(addr_abs));
             this->cycles += 4;
+            break;
+        case 0x2E :
+            ROL(addr_abs());
+            this->cycles += 6;
             break;
         case 0x30 :
             BMI();
@@ -489,6 +585,14 @@ void CPU::exec(const uint8_t op_code) {
             AND(read(addr_zpg_x));
             this->cycles += 4;
             break;
+        case 0x36 :
+            ROL(addr_zpg_x());
+            this->cycles += 6;
+            break;
+        case 0x38 :
+            SEC();
+            this->cycles += 2;
+            break;
         case 0x39 :
             AND(read(addr_abs_y));
             this->cycles += 4;
@@ -496,6 +600,14 @@ void CPU::exec(const uint8_t op_code) {
         case 0x3D :
             AND(read(addr_abs_x));
             this->cycles += 4;
+            break;
+        case 0x3E :
+            ROL(addr_abs_x());
+            this->cycles += 7;
+            break;
+        case 0x40 :
+            RTI();
+            this->cycles += 6;
             break;
         case 0x41 :
             EOR(read(addr_indr_x));
@@ -568,6 +680,10 @@ void CPU::exec(const uint8_t op_code) {
             LSR(addr_abs_x());
             this->cycles += 7;
             break;
+        case 0x60 :
+            RTS();
+            this->cycles += 6;
+            break;
         case 0x61 :
             ADC(read(addr_indr_x));
             this->cycles += 6;
@@ -575,6 +691,10 @@ void CPU::exec(const uint8_t op_code) {
         case 0x65 :
             ADC(read(addr_zpg));
             this->cycles += 3;
+            break;
+        case 0x66 :
+            ROR(addr_zpg());
+            this->cycles += 5;
             break;
         case 0x68 :
             PLA();
@@ -584,6 +704,10 @@ void CPU::exec(const uint8_t op_code) {
             ADC(read(addr_imd));
             this->cycles += 2;
             break;
+        case 0x6A :
+            AC = ROR(AC);
+            this->cycles += 2;
+            break;
         case 0x6C :
             JMP(addr_indr());
             this->cycles += 5;
@@ -591,6 +715,10 @@ void CPU::exec(const uint8_t op_code) {
         case 0x6D :
             ADC(read(addr_abs));
             this->cycles += 4;
+            break;
+        case 0x6E :
+            ROR(addr_abs());
+            this->cycles += 6;
             break;
         case 0x70 :
             BVS();
@@ -604,6 +732,14 @@ void CPU::exec(const uint8_t op_code) {
             ADC(read(addr_zpg_x));
             this->cycles += 4;
             break;
+        case 0x76 :
+            ROR(addr_zpg_x());
+            this->cycles += 6;
+            break;
+        case 0x78 :
+            SEI();
+            this->cycles += 2;
+            break;
         case 0x79 :
             ADC(read(addr_abs_y));
             this->cycles += 4;
@@ -612,13 +748,81 @@ void CPU::exec(const uint8_t op_code) {
             ADC(read(addr_abs_x));
             this->cycles += 4;
             break;
+        case 0x7E :
+            ROR(addr_abs_x());
+            this->cycles += 7;
+            break;
+        case 0x81 :
+            STA(addr_indr_x());
+            this->cycles += 6;
+            break;
+        case 0x84 :
+            STY(addr_zpg());
+            this->cycles += 3;
+            break;
+        case 0x85 :
+            STA(addr_zpg());
+            this->cycles += 3;
+            break;
+        case 0x86 :
+            STX(addr_zpg());
+            this->cycles += 3;
+            break;
         case 0x88 :
             DEY();
             this->cycles += 2;
             break;
+        case 0x8A :
+            TXA();
+            this->cycles += 2;
+            break;
+        case 0x8C :
+            STY(addr_abs());
+            this->cycles += 4;
+            break;
+        case 0x8D :
+            STA(addr_abs());
+            this->cycles += 4;
+            break;
+        case 0x8E :
+            STX(addr_abs());
+            this->cycles += 4;
+            break;
         case 0x90 :
             BCC();
             this->cycles += 2;
+            break;
+        case 0x91 :
+            STA(addr_indr_y());
+            this->cycles += 6;
+            break;
+        case 0x94 :
+            STY(addr_zpg_x());
+            this->cycles += 4;
+            break;
+        case 0x95 :
+            STA(addr_zpg_x());
+            this->cycles += 4;
+            break;
+        case 0x96 :
+            STX(addr_zpg_x());
+            this->cycles += 4;
+            break;
+        case 0x98 :
+            TYA();
+            this->cycles += 2;
+            break;
+        case 0x99 :
+            STA(addr_abs_y());
+            this->cycles += 5;
+            break;
+        case 0x9A :
+            TXS();
+            this->cycles += 2;
+            break;
+        case 0x9D :
+            STA(addr_abs_x());
+            this->cycles += 5;
             break;
         case 0xA0 :
             LDY(read(add_imd));
@@ -644,8 +848,16 @@ void CPU::exec(const uint8_t op_code) {
             LDX(read(addr_zpg));
             this->cycles += 3;
             break;
+        case 0xA8 :
+            TAY();
+            this->cycles += 2;
+            break;
         case 0xA9 :
             LDA(read(addr_imd));
+            this->cycles += 2;
+            break;
+        case 0xAA :
+            TAX();
             this->cycles += 2;
             break;
         case 0xAC :
@@ -687,6 +899,10 @@ void CPU::exec(const uint8_t op_code) {
         case 0xB9 :
             LDA(read(addr_abs_y));
             this-cycles += 4;
+            break;
+        case 0xBA :
+            TSX();
+            this->cycles += 2;
             break;
         case 0xBC :
             LDY(read(addr_abs_x));
@@ -780,9 +996,17 @@ void CPU::exec(const uint8_t op_code) {
             CPX(read(addr_imd));
             this->cycles += 2;
             break;
+        case 0xE1 :
+            SBC(read(addr_indr_x));
+            this->cycles += 6;
+            break;
         case 0xE4 :
             CPX(read(addr_zpg));
             this->cycles += 3;
+            break;
+        case 0xE5 :
+            SBC(read(addr_zpg));
+            this_cycles += 3;
             break;
         case 0xE6 :
             INC(addr_zpg());
@@ -790,6 +1014,10 @@ void CPU::exec(const uint8_t op_code) {
             break;
         case 0xE8 :
             INX();
+            this->cycles += 2;
+            break;
+        case 0xE9 :
+            SBC(read(addr_imd));
             this->cycles += 2;
             break;
         case 0xEA :
@@ -800,13 +1028,37 @@ void CPU::exec(const uint8_t op_code) {
             CPX(read(addr_abs));
             this->cycles += 4;
             break;
+        case 0xED :
+            SBC(read(addr_abs));
+            this->cycles += 4;
+            break;
         case 0xEE :
             INC(addr_abs());
             this->cycles += 6;
             break;
+        case 0xF1 :
+            SBC(read(addr_indr_y));
+            this->cycles += 5;
+            break;
+        case 0xF5 :
+            SBC(read(addr_zpg_x));
+            this->cycles += 4;
+            break;
         case 0xF6 :
             INC(addr_zpg_x());
             this->cycles += 6;
+            break;
+        case 0xF8 :
+            SED();
+            this->cycles += 2;
+            break;
+        case 0xF9 :
+            SBC(read(addr_abs_y));
+            this->cycles += 4;
+            break;
+        case 0xFD :
+            SBC(read(addr_abs_x));
+            this->cycles += 4;
             break;
         case 0xFE :
             INC(addr_abs_x());

@@ -1,5 +1,4 @@
-#ifndef 6502_CPU_H
-#define 6502_CPU_H
+#pragma once
 
 #include "bus.h"
 
@@ -14,8 +13,8 @@ class CPU {
 
     void reset();
 
-    void CPU();
-    void ~CPU();
+    CPU();
+    ~CPU();
 
     void exec(const uint8_t);
 
@@ -25,4 +24,4 @@ class CPU {
     };
 
 };
-#endif
+
